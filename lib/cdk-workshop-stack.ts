@@ -1,19 +1,57 @@
-import { Duration, Stack, StackProps } from 'aws-cdk-lib';
-import * as sns from 'aws-cdk-lib/aws-sns';
-import * as subs from 'aws-cdk-lib/aws-sns-subscriptions';
-import * as sqs from 'aws-cdk-lib/aws-sqs';
-import { Construct } from 'constructs';
+import * as cdk from 'aws-cdk-lib';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
-export class CdkWorkshopStack extends Stack {
-  constructor(scope: Construct, id: string, props?: StackProps) {
+export class CdkWorkshopStack extends cdk.Stack {
+  constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const queue = new sqs.Queue(this, 'CdkWorkshopQueue', {
-      visibilityTimeout: Duration.seconds(300)
+    // VPCを宣言
+    const vpc = new ec2.Vpc(this, 'WorkshopVPC', {
+      // CIDR
+      cidr: '10.1.0.0/16',
+      // PublicとPrivateのサブネットを定義
+      subnetConfiguration: [
+        {
+          cidrMask: 24,
+          name: 'WorkshopPublicSubnet',
+          subnetType: ec2.SubnetType.PUBLIC
+        },
+        {
+          cidrMask: 24,
+          name: 'WorkshopPrivateSubnet',
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED
+        }
+      ]
     });
 
-    const topic = new sns.Topic(this, 'CdkWorkshopTopic');
+    // Lambdaの実行ロールを宣言
+    const role = new iam.Role(this, 'WorkshopRole', {
+      // ロール名
+      roleName: 'workshop-role',
+      // LambdaサービスからこのロールにAssumeRoleできるよう設定
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      // ポリシーの宣言
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          'service-role/AWSLambdaVPCAccessExecutionRole'
+        ),
+      ],
+    });
 
-    topic.addSubscription(new subs.SqsSubscription(queue));
+    // Lambdaリソースを宣言
+    const hello = new lambda.Function(this, 'HelloHandler', {
+      // ランタイムの指定
+      runtime: lambda.Runtime.NODEJS_14_X,
+      // lambdaディレクトリを指定
+      code: lambda.Code.fromAsset('lambda'),
+      // hello.jsのhandler関数を指定
+      handler: 'hello.handler',
+      // VPC内に配置
+      vpc: vpc,
+      // 実行ロールの設定
+      role: role,
+    });
   }
 }
