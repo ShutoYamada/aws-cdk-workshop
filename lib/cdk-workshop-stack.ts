@@ -3,42 +3,20 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 
+type CdkWorkshopStackProps = {
+  // Lambdaを配置するVPC
+  lambdaVpc: ec2.Vpc;
+} & Partial<cdk.StackProps>
+
 export class CdkWorkshopStack extends cdk.Stack {
-  constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
+
+  constructor(scope: cdk.App, id: string, props: CdkWorkshopStackProps) {
     super(scope, id, props);
 
-    // VPCを宣言
-    const vpc = new ec2.Vpc(this, 'WorkshopVPC', {
-      // CIDR
-      cidr: '10.1.0.0/16',
-      // PublicとPrivateのサブネットを定義
-      subnetConfiguration: [
-        {
-          cidrMask: 24,
-          name: 'WorkshopPublicSubnet',
-          subnetType: ec2.SubnetType.PUBLIC
-        },
-        {
-          cidrMask: 24,
-          name: 'WorkshopPrivateSubnet',
-          subnetType: ec2.SubnetType.PRIVATE_ISOLATED
-        }
-      ]
-    });
-
-    // Lambdaの実行ロールを宣言
-    const role = new iam.Role(this, 'WorkshopRole', {
-      // ロール名
-      roleName: 'workshop-role',
-      // LambdaサービスからこのロールにAssumeRoleできるよう設定
-      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
-      // ポリシーの宣言
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName(
-          'service-role/AWSLambdaVPCAccessExecutionRole'
-        ),
-      ],
-    });
+    // Lambdaの実行ロールを取得
+    const lambdaRole = iam.Role.fromRoleArn(this, 'LambdaRole', cdk.Fn.importValue('LambdaRoleArn'));
+    // Lambdaを格納するVPCを取得
+    const lambdaVpc = props.lambdaVpc;
 
     // Lambdaリソースを宣言
     const hello = new lambda.Function(this, 'HelloHandler', {
@@ -49,9 +27,11 @@ export class CdkWorkshopStack extends cdk.Stack {
       // hello.jsのhandler関数を指定
       handler: 'hello.handler',
       // VPC内に配置
-      vpc: vpc,
+      vpc: lambdaVpc,
       // 実行ロールの設定
-      role: role,
+      role: lambdaRole
     });
+
+    cdk.Tags.of(hello).add('Type','Test');
   }
 }
